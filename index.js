@@ -21,49 +21,7 @@ if (!RPC_URL || !CONTRACT_ADDR || !PRIVATE_KEY) {
 /* =================== ASSETS MAP =================== */
 /** Tu gères les idées; je m'occupe de la logique/horaires. */
 const ASSETS = {
-  aapl_usd: { id: 6004, name: "APPLE INC.",            cat: "equity" },
-  amzn_usd: { id: 6005, name: "AMAZON",                cat: "equity" },
-  coin_usd: { id: 6010, name: "COINBASE",              cat: "equity" },
-  goog_usd: { id: 6003, name: "ALPHABET INC.",         cat: "equity" },
-  gme_usd:  { id: 6011, name: "GAMESTOP CORP.",        cat: "equity" },
-  intc_usd: { id: 6009, name: "INTEL CORPORATION",     cat: "equity" },
-  ko_usd:   { id: 6059, name: "COCA-COLA CO",          cat: "equity" },
-  mcd_usd:  { id: 6068, name: "MCDONALD'S CORP",       cat: "equity" },
-  msft_usd: { id: 6001, name: "MICROSOFT CORP",        cat: "equity" },
-  ibm_usd:  { id: 6066, name: "IBM",                   cat: "equity" },
-  meta_usd: { id: 6006, name: "META PLATFORMS INC.",   cat: "equity" },
-  nvda_usd: { id: 6002, name: "NVIDIA CORP",           cat: "equity" },
-  tsla_usd: { id: 6000, name: "TESLA INC",             cat: "equity" },
-
-  aud_usd:  { id: 5010, name: "AUSTRALIAN DOLLAR",     cat: "fxcom" },
-  eur_usd:  { id: 5000, name: "EURO",                  cat: "fxcom" },
-  gbp_usd:  { id: 5002, name: "GREAT BRITAIN POUND",   cat: "fxcom" },
-  nzd_usd:  { id: 5013, name: "NEW ZEALAND DOLLAR",    cat: "fxcom" },
-  usd_cad:  { id: 5011, name: "CANADIAN DOLLAR",       cat: "fxcom" },
-  usd_chf:  { id: 5012, name: "SWISS FRANC",           cat: "fxcom" },
-  usd_jpy:  { id: 5001, name: "JAPANESE YEN",          cat: "fxcom" },
-
-  xag_usd:  { id: 5501, name: "SILVER",                cat: "fxcom" },
-  xau_usd:  { id: 5500, name: "GOLD",                  cat: "fxcom" },
-  wti_usd:  { id: 5503, name: "WEST TEXAS INTERMEDIATE CRUDE", cat: "fxcom" },
-
-  btc_usdt: { id: 0,    name: "BITCOIN",               cat: "crypto" },
-  eth_usdt: { id: 1,    name: "ETHEREUM",              cat: "crypto" },
-  sol_usdt: { id: 10,   name: "SOLANA",                cat: "crypto" },
-  xrp_usdt: { id: 14,   name: "RIPPLE",                cat: "crypto" },
-  avax_usdt:{ id: 5,    name: "AVALANCHE",             cat: "crypto" },
-  doge_usdt:{ id: 3,    name: "DOGECOIN",              cat: "crypto" },
-  trx_usdt: { id: 15,   name: "TRON",                  cat: "crypto" },
-  ada_usdt: { id: 16,   name: "CARDANO",               cat: "crypto" },
-  sui_usdt: { id: 90,   name: "SUI",                   cat: "crypto" },
-  link_usdt:{ id: 2,    name: "CHAINLINK",             cat: "crypto" },
-
-  orcle_usd:{ id: 6038, name: "ORACLE CORPORATION",    cat: "equity" },
-
-  nike_usd: { id: 6034, name: "NIKE INC",              cat: "equity" },
-  spdia_usd:{ id: 6113, name: "SPDR S&P 500 ETF",      cat: "index" },
-  qqqm_usd: { id: 6114, name: "NASDAQ-100 ETF",        cat: "index" },
-  iwm_usd:  { id: 6115, name: "ISHARES RUSSELL 2000 ETF", cat: "index" }
+  btc_usdt: { id: 0,    name: "BITCOIN",               cat: "crypto" }
 };
 
 // IDs connus (si pas override on utilisera l’ensemble de ce mapping)
