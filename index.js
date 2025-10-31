@@ -9,7 +9,7 @@ const RPC_URL        = process.env.RPC_URL;
 const CONTRACT_ADDR  = process.env.CONTRACT_ADDR;
 const PRIVATE_KEY    = process.env.PRIVATE_KEY;
 const PROOF_BASE_URL = process.env.PROOF_BASE_URL ?? "https://proof.brokex.trade/proof";
-const INTERVAL_MS    = Number(process.env.INTERVAL_MS ?? 5000);
+const INTERVAL_MS    = Number(process.env.INTERVAL_MS ?? 15000); // ← 15 s par défaut
 const ASSET_IDS_OVERRIDE = process.env.ASSET_IDS_OVERRIDE ?? ""; // ex: "0-17,5000-5600,6000-6060"
 
 /* =================== VALIDATION =================== */
@@ -18,14 +18,23 @@ if (!RPC_URL || !CONTRACT_ADDR || !PRIVATE_KEY) {
   process.exit(1);
 }
 
-/* =================== ASSETS MAP =================== */
-/** Tu gères les idées; je m'occupe de la logique/horaires. */
-const ASSETS = {
-  btc_usdt: { id: 0,    name: "BITCOIN",               cat: "crypto" }
-};
+/* =================== RANGES =================== */
+// Crypto: 0 <= id < 100 (24/7)
+// FX & Métaux: 5000 <= id <= 5600 (Lun–Ven, 00:00–24:00 NY)
+// Actions: 6000 <= id < 6100 (Lun–Ven, 09:30–16:30 NY)
+// Indices: 6100 <= id < 6200 (Lun–Ven, 00:00–24:00 NY)
 
-// IDs connus (si pas override on utilisera l’ensemble de ce mapping)
-const ALL_IDS = Array.from(new Set(Object.values(ASSETS).map(a => a.id))).sort((a,b)=>a-b);
+function rangeInclusive(a, b) {
+  const out = [];
+  const start = Math.min(a, b), end = Math.max(a, b);
+  for (let i = start; i <= end; i++) out.push(i);
+  return out;
+}
+function rangeHalfOpen(a, b) { // [a, b)
+  const out = [];
+  for (let i = a; i < b; i++) out.push(i);
+  return out;
+}
 
 /* =================== HELPERS =================== */
 function expandRanges(spec) {
@@ -33,14 +42,14 @@ function expandRanges(spec) {
   const out = new Set();
   spec.split(",").map(s => s.trim()).filter(Boolean).forEach(token => {
     if (token.includes("-")) {
-      const [a,b] = token.split("-").map(Number);
-      const start = Math.min(a,b), end = Math.max(a,b);
+      const [A, B] = token.split("-").map(Number);
+      const start = Math.min(A, B), end = Math.max(A, B);
       for (let i = start; i <= end; i++) out.add(i);
     } else {
       out.add(Number(token));
     }
   });
-  return Array.from(out).sort((x,y)=>x-y);
+  return Array.from(out).filter(Number.isFinite).sort((x,y)=>x-y);
 }
 
 function chunk(arr, size) {
@@ -49,41 +58,33 @@ function chunk(arr, size) {
   return res;
 }
 
-// Catégorie par ID si jamais tu rajoutes des IDs hors mapping
-function inferCategoryById(id) {
-  if (id >= 0 && id <= 1000) return "crypto";
-  if ((id >= 5000 && id <= 5600) || (id >= 5500 && id <= 5599)) return "fxcom";
-  if (id >= 6000) return "equity"; // fallback
+function getCategoryById(id) {
+  if (id >= 0 && id < 100) return "crypto";
+  if (id >= 5000 && id <= 5600) return "fxcom";
+  if (id >= 6000 && id < 6100) return "equity";
+  if (id >= 6100 && id < 6200) return "index";
   return "unknown";
 }
 
-function getCategory(id) {
-  // D’abord, tente de trouver dans le mapping
-  const found = Object.values(ASSETS).find(a => a.id === id);
-  if (found?.cat) return found.cat;
-  return inferCategoryById(id);
-}
-
-// Fenêtres horaires par catégorie
+// Fenêtres horaires par catégorie (America/New_York)
 function isAllowedNowByCategory(cat, nowUTC = DateTime.utc()) {
   const nowNY = nowUTC.setZone("America/New_York");
   const weekday = nowNY.weekday; // 1=Mon ... 7=Sun
+  const minutes = nowNY.hour * 60 + nowNY.minute;
 
   switch (cat) {
     case "crypto":
-      // en continu (24/7)
-      return true;
+      return true; // 24/7
 
     case "fxcom":
     case "index":
-      // tout le temps hors week-end (lun–ven)
+      // Ouvert en continu du lundi au vendredi (NY)
       return weekday >= 1 && weekday <= 5;
 
     case "equity":
-      // actions : lun–ven 09:30–16:30 NY
+      // Actions: lun–ven 09:30–16:30 (NY)
       if (!(weekday >= 1 && weekday <= 5)) return false;
-      const minutes = nowNY.hour * 60 + nowNY.minute;
-      return minutes >= (9*60+30) && minutes <= (16*60+30);
+      return minutes >= (9*60 + 30) && minutes <= (16*60 + 30);
 
     default:
       return false;
@@ -96,9 +97,23 @@ const wallet   = new ethers.Wallet(PRIVATE_KEY, provider);
 const ABI = [ "function ingestProof(bytes _bytesProof) external" ];
 const contract = new ethers.Contract(CONTRACT_ADDR, ABI, wallet);
 
+/* =================== MONITORED SET =================== */
+// Par défaut, on construit toutes les IDs des 4 familles.
+// Si ASSET_IDS_OVERRIDE est défini, on l'utilise à la place.
+const DEFAULT_ALL_IDS = [
+  ...rangeHalfOpen(0, 100),      // crypto
+  ...rangeInclusive(5000, 5600), // fx & métaux
+  ...rangeHalfOpen(6000, 6100),  // actions
+  ...rangeHalfOpen(6100, 6200),  // indices
+];
+
+const MONITORED_IDS = ASSET_IDS_OVERRIDE
+  ? expandRanges(ASSET_IDS_OVERRIDE)
+  : Array.from(new Set(DEFAULT_ALL_IDS)).sort((a,b)=>a-b);
+
 /* =================== LOOP STATE =================== */
-const MONITORED_IDS = ASSET_IDS_OVERRIDE ? expandRanges(ASSET_IDS_OVERRIDE) : ALL_IDS;
 let busy = false;
+const MAX_PER_PROOF = 200; // chunk pour la requête et l'envoi
 
 function log(msg) {
   console.log(`[${new Date().toISOString()}] ${msg}`);
@@ -113,14 +128,14 @@ async function tick() {
     const now = DateTime.utc();
 
     // Filtrer par catégorie/horaires
-    const allowed = MONITORED_IDS.filter(id => isAllowedNowByCategory(getCategory(id), now));
+    const allowed = MONITORED_IDS.filter(id => isAllowedNowByCategory(getCategoryById(id), now));
     if (allowed.length === 0) {
       log("⏭️  Aucune paire autorisée maintenant.");
       return;
     }
 
     // Chunk pour éviter des URLs trop longues
-    const groups = chunk(allowed, 200);
+    const groups = chunk(allowed, MAX_PER_PROOF);
     for (const group of groups) {
       const qs = encodeURIComponent(group.join(","));
       const url = `${PROOF_BASE_URL}?pairs=${qs}`;
@@ -162,9 +177,10 @@ async function tick() {
   log(`🚀 Proof Ingestor lancé | chainId=${net.chainId}`);
   log(`RPC=${RPC_URL}`);
   log(`Contract=${CONTRACT_ADDR}`);
-  log(`Monitored IDs=${MONITORED_IDS.join(",")}`);
-  log(`Interval=${INTERVAL_MS}ms | TZ=America/New_York for schedule`);
+  log(`Monitored IDs (${MONITORED_IDS.length}) = ${MONITORED_IDS[0]}…${MONITORED_IDS[MONITORED_IDS.length-1]}`);
+  log(`Interval=${INTERVAL_MS}ms (15 s) | TZ=America/New_York pour le scheduling`);
 
   await tick();
   setInterval(tick, INTERVAL_MS);
 })();
+
